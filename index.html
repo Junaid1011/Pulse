@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PULSE — Publisher Integration Health Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+/* ══════════════════════════════════════════════
+   TOKENS
+══════════════════════════════════════════════ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:      #06060f;
+  --bg2:     #0b0b1a;
+  --bg3:     #0f0f22;
+  --card:    rgba(255,255,255,0.04);
+  --card2:   rgba(255,255,255,0.07);
+  --border:  rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.16);
+  --text:    #f0f0ff;
+  --muted:   #8080b0;
+  --dim:     #3a3a60;
+  --electric:#00f5ff;
+  --lime:    #a8ff3e;
+  --magenta: #ff2d9b;
+  --orange:  #ff7b00;
+  --violet:  #8b5cf6;
+  --gold:    #ffd700;
+  --red:     #ff3b3b;
+  --teal:    #00e8c8;
+  --pink:    #ff6eb4;
+  --ff-d:'Bebas Neue',sans-serif;
+  --ff-b:'Outfit',sans-serif;
+  --ff-m:'JetBrains Mono',monospace;
+}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:var(--ff-b);font-size:16px;line-height:1.7;
+  overflow-x:hidden;cursor:none;
+}
+
+/* ── CURSOR ───────────────────────────────── */
+#cur{position:fixed;top:0;left:0;z-index:9999;pointer-events:none}
+#cur-d{width:6px;height:6px;border-radius:50%;background:var(--lime);
+  position:absolute;transform:translate(-50%,-50%);box-shadow:0 0 10px var(--lime)}
+#cur-r{width:30px;height:30px;border-radius:50%;border:1.5px solid rgba(168,255,62,.5);
+  position:absolute;transform:translate(-50%,-50%);transition:width .2s,height .2s,border-color .2s}
+body:has(a:hover) #cur-r,body:has(button:hover) #cur-r{width:50px;height:50px;border-color:var(--lime)}
+
+/* ── CANVAS ───────────────────────────────── */
+#bgc{position:fixed;inset:0;z-index:0;pointer-events:none}
+.grid-bg{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(0,245,255,.012) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,245,255,.012) 1px,transparent 1px);
+  background-size:50px 50px;
+}
+
+/* ══════════════════════════════════════════════
+   NAV
+══════════════════════════════════════════════ */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:200;
+  transition:background .4s,padding .3s;padding:16px 0;
+}
+nav.scrolled{
+  background:rgba(6,6,15,.92);
+  backdrop-filter:blur(24px);padding:10px 0;
+  border-bottom:1px solid var(--border);
+}
+.nav-wrap{
+  max-width:1200px;margin:0 auto;padding:0 32px;
+  display:flex;align-items:center;justify-content:space-between;gap:24px;
+}
+.logo{
+  font-family:var(--ff-d);font-size:30px;letter-spacing:.08em;
+  text-decoration:none;color:#fff;display:flex;align-items:center;gap:10px;
+  flex-shrink:0;
+}
+.logo-sub{
+  font-family:var(--ff-m);font-size:9px;color:var(--muted);
+  letter-spacing:.12em;text-transform:uppercase;line-height:1;
+  border-left:1px solid var(--border);padding-left:10px;
+}
+
+/* ── TAB NAV ─────────────────────────────── */
+.tab-nav{
+  display:flex;gap:4px;background:rgba(255,255,255,.04);
+  border:1px solid var(--border);border-radius:6px;padding:4px;
+}
+.tn-btn{
+  font-family:var(--ff-m);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  padding:8px 18px;border-radius:4px;border:none;background:transparent;
+  color:var(--muted);cursor:none;transition:all .2s;
+  position:relative;white-space:nowrap;
+}
+.tn-btn:hover{color:var(--text)}
+.tn-btn.active{
+  color:#000;font-weight:500;
+}
+.tn-btn.active::before{
+  content:'';position:absolute;inset:0;border-radius:4px;
+  background:var(--tab-col,var(--lime));z-index:-1;
+  box-shadow:0 0 16px var(--tab-col,var(--lime));
+}
+.tn-btn[data-tab="problem"].active{--tab-col:var(--red)}
+.tn-btn[data-tab="solution"].active{--tab-col:var(--electric)}
+.tn-btn[data-tab="agent"].active{--tab-col:var(--violet)}
+.tn-btn[data-tab="roadmap"].active{--tab-col:var(--gold)}
+
+/* ══════════════════════════════════════════════
+   PAGES
+══════════════════════════════════════════════ */
+.page{
+  display:none;min-height:100vh;padding:100px 0 80px;
+  position:relative;z-index:2;
+  animation:fadeIn .4s ease;
+}
+.page.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+
+.wrap{max-width:1200px;margin:0 auto;padding:0 32px}
+
+/* ══════════════════════════════════════════════
+   HOME / HERO (shown when no tab active)
+══════════════════════════════════════════════ */
+#page-home{
+  display:flex;align-items:center;justify-content:center;
+  flex-direction:column;text-align:center;min-height:100vh;
+  padding:80px 32px;
+}
+.home-glow{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:800px;height:800px;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,245,255,.07) 0%,rgba(168,255,62,.04) 40%,transparent 70%);
+  pointer-events:none;
+  animation:pulse-glow 4s ease-in-out infinite;
+}
+@keyframes pulse-glow{0%,100%{opacity:.6;transform:translate(-50%,-50%) scale(1)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.05)}}
+.home-eyebrow{
+  font-family:var(--ff-m);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--electric);margin-bottom:24px;
+  display:flex;align-items:center;gap:14px;justify-content:center;
+}
+.home-eyebrow::before,.home-eyebrow::after{content:'';width:40px;height:1px;background:var(--electric);box-shadow:0 0 8px var(--electric)}
+.hero-big{
+  font-family:var(--ff-d);
+  font-size:clamp(100px,18vw,200px);
+  line-height:.85;letter-spacing:.06em;
+  background:linear-gradient(135deg,#fff 30%,var(--electric) 70%,var(--lime) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  margin-bottom:16px;
+}
+.hero-full-name{
+  font-family:var(--ff-m);font-size:14px;color:var(--muted);
+  letter-spacing:.14em;text-transform:uppercase;margin-bottom:28px;
+}
+.hero-full-name span{color:var(--electric)}
+.hero-tagline{
+  font-size:clamp(16px,2.2vw,22px);color:var(--muted);
+  max-width:600px;margin:0 auto 52px;line-height:1.75;
+}
+.hero-tagline strong{color:var(--text)}
+
+/* tab cards grid */
+.home-cards{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:12px;max-width:900px;margin:0 auto 56px;
+}
+.hc{
+  border-radius:10px;padding:24px 20px;
+  border:1px solid var(--border);background:var(--card);
+  cursor:none;transition:transform .25s,border-color .25s,background .25s;
+  text-align:left;position:relative;overflow:hidden;
+}
+.hc::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:var(--hc-c,var(--electric));
+  box-shadow:0 0 12px var(--hc-c,var(--electric));
+}
+.hc:hover{transform:translateY(-6px);border-color:var(--border2);background:var(--card2)}
+.hc-icon{font-size:28px;margin-bottom:12px;display:block}
+.hc-label{font-family:var(--ff-m);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--hc-c,var(--electric));margin-bottom:6px}
+.hc-title{font-family:var(--ff-d);font-size:20px;letter-spacing:.04em;color:#fff;margin-bottom:6px}
+.hc-desc{font-size:12px;color:var(--muted);line-height:1.5}
+
+/* stats row */
+.home-stats{
+  display:flex;gap:0;border:1px solid var(--border);
+  border-radius:8px;overflow:hidden;max-width:640px;margin:0 auto;
+}
+.hs{flex:1;padding:18px 24px;border-right:1px solid var(--border);position:relative}
+.hs:last-child{border:none}
+.hs::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--hsc,var(--electric));box-shadow:0 0 8px var(--hsc,var(--electric))}
+.hs-n{font-family:var(--ff-d);font-size:36px;letter-spacing:.04em;color:var(--hsc,var(--electric));line-height:1;margin-bottom:4px}
+.hs-l{font-size:11px;color:var(--muted);font-family:var(--ff-m);letter-spacing:.06em}
+
+/* ══════════════════════════════════════════════
+   SHARED SECTION STYLES
+══════════════════════════════════════════════ */
+.pg-header{margin-bottom:56px;padding-bottom:40px;border-bottom:1px solid var(--border)}
+.pg-tag{
+  font-family:var(--ff-m);font-size:11px;letter-spacing:.15em;text-transform:uppercase;
+  margin-bottom:12px;display:flex;align-items:center;gap:10px;
+}
+.pg-tag::before{content:'';width:28px;height:1px}
+.pg-tag.red{color:var(--red)}.pg-tag.red::before{background:var(--red);box-shadow:0 0 6px var(--red)}
+.pg-tag.electric{color:var(--electric)}.pg-tag.electric::before{background:var(--electric);box-shadow:0 0 6px var(--electric)}
+.pg-tag.violet{color:var(--violet)}.pg-tag.violet::before{background:var(--violet);box-shadow:0 0 6px var(--violet)}
+.pg-tag.gold{color:var(--gold)}.pg-tag.gold::before{background:var(--gold);box-shadow:0 0 6px var(--gold)}
+.pg-h1{
+  font-family:var(--ff-d);font-size:clamp(44px,6vw,80px);
+  line-height:.95;letter-spacing:.04em;color:#fff;margin-bottom:16px;
+}
+.pg-lead{font-size:17px;color:var(--muted);line-height:1.7;max-width:580px}
+
+/* ══════════════════════════════════════════════
+   PAGE: PROBLEM
+══════════════════════════════════════════════ */
+#page-problem::before{
+  content:'';position:absolute;top:0;right:0;
+  width:600px;height:600px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,59,59,.07) 0%,transparent 65%);
+  pointer-events:none;
+}
+
+.prob-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:48px}
+.prob-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:10px;padding:28px 24px;
+  position:relative;overflow:hidden;
+  transition:transform .3s,border-color .3s;
+}
+.prob-card:hover{transform:translateY(-5px);border-color:rgba(255,59,59,.3)}
+.prob-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--pc,var(--red)),transparent);opacity:0;transition:opacity .3s}
+.prob-card:hover::before{opacity:1}
+.pc-n{font-family:var(--ff-d);font-size:56px;letter-spacing:.04em;color:rgba(255,59,59,.1);line-height:1;margin-bottom:10px}
+.pc-ico{font-size:28px;margin-bottom:12px;display:block}
+.pc-t{font-size:16px;font-weight:700;color:#fff;margin-bottom:8px}
+.pc-b{font-size:13.5px;color:var(--muted);line-height:1.6}
+
+.impact-flow{
+  background:linear-gradient(135deg,rgba(255,59,59,.06),rgba(255,123,0,.03));
+  border:1px solid rgba(255,59,59,.15);border-radius:12px;
+  padding:36px 40px;margin-bottom:40px;
+}
+.if-title{font-family:var(--ff-m);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--red);margin-bottom:24px;display:flex;align-items:center;gap:8px}
+.if-title::before{content:'';width:20px;height:1px;background:var(--red)}
+.if-chain{display:flex;align-items:center;gap:0;flex-wrap:wrap;justify-content:center}
+.ifc-item{
+  background:rgba(255,255,255,.03);border:1px solid var(--border);
+  border-radius:6px;padding:10px 16px;
+  font-size:13px;color:var(--text);font-weight:500;
+  text-align:center;white-space:nowrap;
+}
+.ifc-arrow{color:var(--red);font-size:20px;padding:0 8px;flex-shrink:0}
+.ifc-item.end{background:rgba(255,59,59,.08);border-color:rgba(255,59,59,.25);color:var(--red)}
+
+.timeline-section{margin-top:40px}
+.tl-title{font-family:var(--ff-m);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--red);margin-bottom:28px;display:flex;align-items:center;gap:8px}
+.tl-title::before{content:'';width:20px;height:1px;background:var(--red)}
+.tl-track{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:0;position:relative;
+}
+.tl-track::before{
+  content:'';position:absolute;top:16px;left:12%;right:12%;height:1px;
+  background:linear-gradient(90deg,var(--red),var(--orange),rgba(255,255,255,.1));
+}
+.tl-item{text-align:center;padding-top:40px;position:relative}
+.tl-dot{
+  width:14px;height:14px;border-radius:50%;
+  background:var(--tld,var(--red));border:2px solid var(--bg2);
+  box-shadow:0 0 10px var(--tld,var(--red));
+  position:absolute;top:9px;left:50%;transform:translateX(-50%);z-index:1;
+}
+.tl-day{font-family:var(--ff-m);font-size:10px;color:var(--muted);letter-spacing:.06em;margin-bottom:5px}
+.tl-lbl{font-size:13px;color:var(--text);font-weight:600;line-height:1.4;margin-bottom:4px}
+.tl-sub{font-size:11px;color:var(--muted);line-height:1.4}
+
+/* ══════════════════════════════════════════════
+   PAGE: SOLUTION
+══════════════════════════════════════════════ */
+#page-solution::before{
+  content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-60%);
+  width:700px;height:700px;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,245,255,.04) 0%,transparent 65%);
+  pointer-events:none;
+}
+
+/* flow diagram */
+.pipeline{
+  background:rgba(10,10,25,.97);border:1px solid var(--border2);
+  border-radius:12px;overflow:hidden;margin-bottom:48px;
+}
+.pl-header{
+  background:rgba(0,245,255,.05);border-bottom:1px solid var(--border);
+  padding:14px 22px;font-family:var(--ff-m);font-size:12px;
+  color:var(--electric);display:flex;align-items:center;gap:10px;letter-spacing:.06em;
+}
+.pl-header::before{content:'●';color:var(--lime);font-size:8px}
+.pl-body{padding:28px}
+
+.pl-steps{display:grid;grid-template-columns:repeat(6,1fr);gap:0;position:relative}
+.pl-steps::before{
+  content:'';position:absolute;top:28px;left:4%;right:4%;height:1px;
+  background:linear-gradient(90deg,var(--electric),var(--lime),var(--violet),var(--magenta));
+  opacity:.3;
+}
+.pl-step{text-align:center;padding:0 8px}
+.pl-step-num{
+  width:56px;height:56px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;margin:0 auto 14px;position:relative;z-index:1;
+  border:2px solid var(--psc,var(--electric));
+  background:rgba(0,245,255,.08);
+  box-shadow:0 0 20px rgba(0,245,255,.15);
+}
+.pl-step-title{font-family:var(--ff-m);font-size:10px;letter-spacing:.06em;color:var(--text);margin-bottom:4px;font-weight:500}
+.pl-step-sub{font-size:11px;color:var(--muted);line-height:1.4}
+
+/* split queries */
+.query-split{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:16px;margin-bottom:32px;
+}
+.qs-card{
+  border-radius:8px;padding:20px;border:1px solid var(--border);background:var(--card);
+  transition:border-color .3s;
+}
+.qs-card:hover{border-color:var(--border2)}
+.qsc-badge{font-family:var(--ff-m);font-size:10px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
+.qsc-title{font-size:15px;font-weight:700;color:#fff;margin-bottom:6px}
+.qsc-desc{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:12px}
+.qsc-meta{font-family:var(--ff-m);font-size:11px;color:var(--dim);letter-spacing:.04em}
+
+/* signal cards */
+.sig-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:48px}
+.sig{border-radius:10px;padding:22px 18px;position:relative;overflow:hidden;transition:transform .3s}
+.sig:hover{transform:translateY(-4px)}
+.sig-1{background:rgba(0,245,255,.05);border:1px solid rgba(0,245,255,.2)}
+.sig-2{background:rgba(168,255,62,.05);border:1px solid rgba(168,255,62,.18)}
+.sig-3{background:rgba(139,92,246,.05);border:1px solid rgba(139,92,246,.18);opacity:.5}
+.sig-4{background:rgba(255,123,0,.05);border:1px solid rgba(255,123,0,.18);opacity:.5}
+.sig-phase{font-family:var(--ff-m);font-size:9px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px}
+.sig-name{font-weight:700;font-size:14px;color:#fff;margin-bottom:6px}
+.sig-desc{font-size:12px;color:var(--muted);line-height:1.5}
+.sig-thr{margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap}
+.thr{font-family:var(--ff-m);font-size:9px;padding:2px 7px;border-radius:2px;letter-spacing:.04em}
+.tr{background:rgba(255,59,59,.1);color:var(--red);border:1px solid rgba(255,59,59,.2)}
+.to{background:rgba(255,123,0,.1);color:var(--orange);border:1px solid rgba(255,123,0,.2)}
+.tg{background:rgba(0,232,200,.1);color:var(--teal);border:1px solid rgba(0,232,200,.2)}
+
+/* slack output */
+.sol-output{display:grid;grid-template-columns:1.1fr 1fr;gap:56px;align-items:center}
+.slack-mock{
+  background:#1a1d21;border-radius:12px;overflow:hidden;
+  border:1px solid rgba(255,255,255,.1);
+  box-shadow:0 32px 64px rgba(0,0,0,.7),0 0 50px rgba(0,245,255,.04);
+}
+.smt{
+  background:#19171d;padding:10px 14px;
+  display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.06);
+}
+.smt-dots{display:flex;gap:6px}
+.smt-d{width:10px;height:10px;border-radius:50%}
+.smt-ch{font-family:var(--ff-m);font-size:12px;color:#62676b;margin-left:4px;display:flex;align-items:center;gap:4px}
+.smb{padding:14px}
+.sm-msg{display:flex;gap:9px;margin-bottom:6px}
+.sm-av{width:34px;height:34px;border-radius:7px;background:#611f69;color:#e8b4f0;font-size:10px;font-weight:600;font-family:var(--ff-m);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sm-mc{flex:1}
+.sm-sender{font-size:12px;font-weight:600;color:#d1d2d3;font-family:var(--ff-m)}
+.sm-badge{background:#4a154b;color:#e8b4f0;font-size:9px;padding:1px 4px;border-radius:2px;margin-left:5px}
+.sm-time{font-size:10px;color:#62676b;margin-left:4px}
+.sm-txt{font-size:12px;color:#d1d2d3;margin-top:2px;line-height:1.5}
+.sm-att{border-left:3px solid;padding:8px 10px;margin-top:5px;border-radius:0 4px 4px 0}
+.att-r{border-color:#e01e5a;background:rgba(224,30,90,.08)}
+.att-b{border-color:#1164a3;background:rgba(17,100,163,.08)}
+.att-g{border-color:#2bac76;background:rgba(43,172,118,.08)}
+.sm-att-t{font-size:12px;font-weight:600;color:#d1d2d3;margin-bottom:4px;font-family:var(--ff-m)}
+.sm-att-b{font-size:11px;color:#ababad;line-height:1.6}
+.sm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:7px}
+.sm-stat{background:#1a1d21;border-radius:3px;padding:5px 7px}
+.sm-stat-l{font-size:9px;color:#62676b;text-transform:uppercase;letter-spacing:.04em;font-family:var(--ff-m)}
+.sm-stat-v{font-size:13px;font-weight:600;font-family:var(--ff-m)}
+.svr{color:#e01e5a}.sva{color:#e8a21a}.svg{color:#2bac76}
+.sm-btns{display:flex;gap:5px;margin-top:7px}
+.sm-btn{background:#2c3035;border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:3px 8px;font-size:10px;color:#d1d2d3;cursor:pointer;font-family:var(--ff-m)}
+
+.out-feats{display:flex;flex-direction:column;gap:10px;margin-top:20px}
+.of{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-radius:6px;background:var(--card);border:1px solid var(--border);transition:border-color .25s}
+.of:hover{border-color:var(--border2)}
+.of-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:6px;box-shadow:0 0 6px var(--odc,var(--electric));background:var(--odc,var(--electric))}
+.of-t{font-size:13.5px;color:var(--muted);line-height:1.55}
+.of-t strong{color:var(--text)}
+
+/* ══════════════════════════════════════════════
+   PAGE: AGENT
+══════════════════════════════════════════════ */
+#page-agent::before{
+  content:'';position:absolute;top:30%;left:50%;transform:translateX(-50%);
+  width:800px;height:600px;border-radius:50%;
+  background:radial-gradient(circle,rgba(139,92,246,.05) 0%,transparent 70%);
+  pointer-events:none;
+}
+
+.agent-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:48px}
+.ag{border-radius:10px;padding:28px 24px;border:1px solid var(--border);background:var(--card);position:relative;overflow:hidden;transition:transform .3s,border-color .3s}
+.ag:hover{transform:translateY(-5px);border-color:var(--border2)}
+.ag::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--agc,var(--electric));box-shadow:0 0 12px var(--agc,var(--electric))}
+.ag-step{font-family:var(--ff-m);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--agc,var(--electric));margin-bottom:10px}
+.ag-ico{font-size:28px;margin-bottom:10px;display:block}
+.ag-t{font-size:17px;font-weight:700;color:#fff;margin-bottom:7px}
+.ag-d{font-size:13px;color:var(--muted);line-height:1.6}
+.ag-det{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.ag-det-i{font-size:12px;color:var(--muted);margin-bottom:5px;display:flex;align-items:flex-start;gap:6px}
+.ag-det-i::before{content:'→';color:var(--agc,var(--electric));font-size:11px;flex-shrink:0;margin-top:1px}
+
+/* diff section */
+.diff-lbl{font-family:var(--ff-m);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--violet);margin-bottom:24px;display:flex;align-items:center;gap:8px}
+.diff-lbl::before{content:'';width:20px;height:1px;background:var(--violet)}
+.diff-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:20px;align-items:center}
+.diff-col{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:26px 22px}
+.diff-col.after{background:rgba(0,245,255,.03);border-color:rgba(0,245,255,.2)}
+.diff-title{font-family:var(--ff-m);font-size:11px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:16px}
+.dt-before{color:var(--red)}.dt-after{color:var(--electric)}
+.diff-item{display:flex;align-items:flex-start;gap:9px;font-size:13px;margin-bottom:10px}
+.diff-item:last-child{margin:0}
+.di-x{color:var(--red);font-size:14px;flex-shrink:0}
+.di-c{color:var(--lime);font-size:14px;flex-shrink:0}
+.diff-item span{color:var(--muted);line-height:1.5}
+.diff-vs{font-family:var(--ff-d);font-size:40px;color:rgba(255,255,255,.08);text-align:center}
+
+/* why agent not script */
+.why-agent{
+  background:linear-gradient(135deg,rgba(139,92,246,.06),rgba(255,45,155,.03));
+  border:1px solid rgba(139,92,246,.2);border-radius:12px;
+  padding:36px 40px;margin-bottom:48px;
+}
+.wa-title{font-family:var(--ff-d);font-size:28px;letter-spacing:.04em;color:#fff;margin-bottom:12px}
+.wa-body{font-size:15px;color:var(--muted);line-height:1.75;max-width:720px}
+.wa-body strong{color:var(--text)}
+
+/* ══════════════════════════════════════════════
+   PAGE: ROADMAP
+══════════════════════════════════════════════ */
+#page-roadmap::before{
+  content:'';position:absolute;top:30%;left:50%;transform:translateX(-50%);
+  width:700px;height:700px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,215,0,.04) 0%,transparent 70%);
+  pointer-events:none;
+}
+
+.phase-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-bottom:48px}
+.phase{border-radius:12px;padding:32px 28px;position:relative;overflow:hidden;transition:transform .3s}
+.phase:hover{transform:translateY(-6px)}
+.ph1{background:linear-gradient(145deg,rgba(0,245,255,.07),rgba(0,232,200,.03));border:1px solid rgba(0,245,255,.25)}
+.ph2{background:linear-gradient(145deg,rgba(139,92,246,.07),rgba(255,45,155,.03));border:1px solid rgba(139,92,246,.25)}
+.ph3{background:linear-gradient(145deg,rgba(255,215,0,.07),rgba(255,123,0,.03));border:1px solid rgba(255,215,0,.22)}
+.ph-status{font-family:var(--ff-m);font-size:9px;letter-spacing:.12em;text-transform:uppercase;padding:3px 10px;border-radius:20px;display:inline-block;margin-bottom:18px}
+.st-live{background:rgba(0,245,255,.12);color:var(--electric);border:1px solid rgba(0,245,255,.2)}
+.st-soon{background:rgba(139,92,246,.12);color:var(--violet);border:1px solid rgba(139,92,246,.2)}
+.st-future{background:rgba(255,215,0,.1);color:var(--gold);border:1px solid rgba(255,215,0,.18)}
+.ph-label{font-family:var(--ff-m);font-size:10px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px}
+.ph-title{font-family:var(--ff-d);font-size:26px;letter-spacing:.04em;color:#fff;margin-bottom:10px}
+.ph-desc{font-size:13.5px;color:var(--muted);line-height:1.65;margin-bottom:20px}
+.ph-feats{display:flex;flex-direction:column;gap:7px}
+.phf{display:flex;align-items:center;gap:8px;font-family:var(--ff-m);font-size:11px;color:var(--muted);letter-spacing:.03em}
+.phf::before{content:'✦';font-size:8px}
+.phf-1::before{color:var(--electric)}.phf-2::before{color:var(--violet)}.phf-3::before{color:var(--gold)}
+.ph-eta{margin-top:18px;padding-top:14px;border-top:1px solid var(--border);font-family:var(--ff-m);font-size:10px;color:var(--muted);letter-spacing:.06em}
+
+/* real-time banner */
+.rt-card{
+  background:linear-gradient(135deg,rgba(0,245,255,.05),rgba(168,255,62,.03));
+  border:1px solid rgba(0,245,255,.18);border-radius:12px;padding:32px 36px;
+  display:grid;grid-template-columns:1fr auto;gap:32px;align-items:center;margin-bottom:32px;
+}
+.rt-left h3{font-family:var(--ff-d);font-size:26px;letter-spacing:.04em;color:#fff;margin-bottom:8px}
+.rt-left p{font-size:14px;color:var(--muted);line-height:1.65;max-width:500px}
+.rt-nums{display:flex;gap:24px;align-items:center}
+.rtn{text-align:center}
+.rtn-v{font-family:var(--ff-d);font-size:40px;letter-spacing:.04em;color:var(--electric);line-height:1;margin-bottom:4px}
+.rtn-l{font-size:10px;color:var(--muted);font-family:var(--ff-m);letter-spacing:.05em}
+.rt-arrow{font-family:var(--ff-d);font-size:30px;color:rgba(255,255,255,.15)}
+
+/* health score */
+.hs-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:12px;padding:32px 36px;
+}
+.hs-title{font-family:var(--ff-d);font-size:24px;letter-spacing:.04em;color:#fff;margin-bottom:6px}
+.hs-sub{font-size:14px;color:var(--muted);margin-bottom:24px}
+.formula{
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:8px;padding:18px 22px;margin-bottom:20px;
+  font-family:var(--ff-m);
+}
+.f-title{color:var(--gold);font-size:10px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
+.f-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px}
+.f-row:last-child{border:none}
+.f-sig{color:var(--muted)}
+.f-wt{color:var(--gold);font-weight:500}
+.bands{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.band{border-radius:6px;padding:12px 14px;text-align:center;border:1px solid var(--border)}
+.band-r{font-family:var(--ff-d);font-size:20px;letter-spacing:.04em;margin-bottom:4px}
+.band-l{font-size:11px;color:var(--muted);font-family:var(--ff-m);letter-spacing:.04em}
+.b-g{background:rgba(0,232,200,.06);border-color:rgba(0,232,200,.2)}.b-g .band-r{color:var(--teal)}
+.b-l{background:rgba(168,255,62,.06);border-color:rgba(168,255,62,.18)}.b-l .band-r{color:var(--lime)}
+.b-o{background:rgba(255,123,0,.06);border-color:rgba(255,123,0,.2)}.b-o .band-r{color:var(--orange)}
+.b-r{background:rgba(255,59,59,.06);border-color:rgba(255,59,59,.2)}.b-r .band-r{color:var(--red)}
+
+/* Slack query future */
+.slack-query-banner{
+  background:rgba(255,255,255,.02);border:1px solid var(--border);
+  border-radius:12px;padding:28px 32px;
+  display:flex;gap:32px;align-items:center;
+}
+.sqb-left{flex:1}
+.sqb-left h4{font-family:var(--ff-d);font-size:22px;letter-spacing:.04em;color:#fff;margin-bottom:8px}
+.sqb-left p{font-size:13.5px;color:var(--muted);line-height:1.65}
+.sqb-right{
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:8px;padding:14px 18px;min-width:260px;
+  font-family:var(--ff-m);font-size:12px;
+}
+.sqb-input{color:var(--electric);margin-bottom:8px}
+.sqb-response{color:var(--muted);line-height:1.6;border-top:1px solid var(--border);padding-top:8px}
+
+/* ══════════════════════════════════════════════
+   REVEAL ANIMATIONS
+══════════════════════════════════════════════ */
+.rev{opacity:0;transform:translateY(24px);transition:opacity .6s cubic-bezier(.25,.46,.45,.94),transform .6s cubic-bezier(.25,.46,.45,.94)}
+.rev.vis{opacity:1;transform:none}
+.revl{opacity:0;transform:translateX(-24px);transition:opacity .6s cubic-bezier(.25,.46,.45,.94),transform .6s cubic-bezier(.25,.46,.45,.94)}
+.revl.vis{opacity:1;transform:none}
+.revr{opacity:0;transform:translateX(24px);transition:opacity .6s cubic-bezier(.25,.46,.45,.94),transform .6s cubic-bezier(.25,.46,.45,.94)}
+.revr.vis{opacity:1;transform:none}
+.d1{transition-delay:.1s}.d2{transition-delay:.2s}.d3{transition-delay:.3s}.d4{transition-delay:.4s}
+
+/* ══════════════════════════════════════════════
+   FOOTER
+══════════════════════════════════════════════ */
+footer{
+  border-top:1px solid var(--border);padding:24px 0;text-align:center;
+  font-family:var(--ff-m);font-size:11px;color:var(--dim);letter-spacing:.06em;
+  position:relative;z-index:2;
+}
+footer .fl{color:var(--electric)}
+footer .fl2{color:var(--lime)}
+
+/* ══════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════ */
+@media(max-width:960px){
+  .home-cards{grid-template-columns:repeat(2,1fr)}
+  .home-stats{flex-wrap:wrap}
+  .prob-cards,.agent-cards{grid-template-columns:1fr}
+  .sig-grid{grid-template-columns:repeat(2,1fr)}
+  .sol-output{grid-template-columns:1fr}
+  .diff-grid{grid-template-columns:1fr}
+  .diff-vs{display:none}
+  .phase-grid{grid-template-columns:1fr}
+  .bands{grid-template-columns:repeat(2,1fr)}
+  .tab-nav{flex-wrap:wrap}
+  .rt-card{grid-template-columns:1fr}
+  .pl-steps{grid-template-columns:repeat(3,1fr);gap:20px}
+  .pl-steps::before{display:none}
+  .query-split{grid-template-columns:1fr}
+  .slack-query-banner{flex-direction:column}
+  .if-chain{flex-direction:column;align-items:flex-start}
+  .ifc-arrow{transform:rotate(90deg)}
+}
+</style>
+</head>
+<body>
+
+<canvas id="bgc"></canvas>
+<div class="grid-bg"></div>
+<div id="cur"><div id="cur-r"></div><div id="cur-d"></div></div>
+
+<!-- ═══════════════════════════════
+     NAV
+═══════════════════════════════ -->
+<nav id="nav">
+  <div class="nav-wrap">
+    <a href="#" class="logo" onclick="showTab('home');return false">
+      PULSE
+      <span class="logo-sub">Publisher<br/>Health Agent</span>
+    </a>
+    <div class="tab-nav">
+      <button class="tn-btn" data-tab="problem" onclick="showTab('problem')">Problem</button>
+      <button class="tn-btn" data-tab="solution" onclick="showTab('solution')">Solution</button>
+      <button class="tn-btn" data-tab="agent" onclick="showTab('agent')">Agent Role</button>
+      <button class="tn-btn" data-tab="roadmap" onclick="showTab('roadmap')">Roadmap</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════
+     HOME
+═══════════════════════════════ -->
+<div id="page-home" class="page active" style="display:flex;align-items:center;flex-direction:column;justify-content:center;min-height:100vh;padding:100px 32px 80px;text-align:center;position:relative;z-index:2">
+  <div class="home-glow"></div>
+  <div class="home-eyebrow">Publisher Integration Health Agent</div>
+  <div class="hero-big">PULSE</div>
+  <div class="hero-full-name">
+    <span>P</span>ublisher <span>U</span>p-time & <span>L</span>ive <span>S</span>ignal <span>E</span>ngine
+  </div>
+  <p class="hero-tagline">An AI agent that <strong>monitors every publisher placement</strong> in the network — detecting broken integrations, diagnosing root causes with Claude AI, and delivering fix recommendations to <strong>#placement-health-alert</strong> daily.</p>
+
+  <div class="home-cards">
+    <div class="hc" style="--hc-c:var(--red)" onclick="showTab('problem')">
+      <span class="hc-icon">🔥</span>
+      <div class="hc-label">The Problem</div>
+      <div class="hc-title">Why It Matters</div>
+      <div class="hc-desc">Self-serve publishers miss GAID, UA, IP — silently draining potential revenue</div>
+    </div>
+    <div class="hc" style="--hc-c:var(--electric)" onclick="showTab('solution')">
+      <span class="hc-icon">⚡</span>
+      <div class="hc-label">The Solution</div>
+      <div class="hc-title">How It Works</div>
+      <div class="hc-desc">PULSE scans every publisher in 60 seconds flat and posts results to Slack</div>
+    </div>
+    <div class="hc" style="--hc-c:var(--violet)" onclick="showTab('agent')">
+      <span class="hc-icon">🧠</span>
+      <div class="hc-label">Agent Role</div>
+      <div class="hc-title">Beyond Scripts</div>
+      <div class="hc-desc">Autonomous reasoning, diagnosis, and fix generation — not just detection</div>
+    </div>
+    <div class="hc" style="--hc-c:var(--gold)" onclick="showTab('roadmap')">
+      <span class="hc-icon">🚀</span>
+      <div class="hc-label">Roadmap</div>
+      <div class="hc-title">What's Next</div>
+      <div class="hc-desc">3 phases from detection to real-time alerts and weekly health scores</div>
+    </div>
+  </div>
+
+  <div class="home-stats">
+    <div class="hs" style="--hsc:var(--electric)"><div class="hs-n" id="cnt-60">60s</div><div class="hs-l">Full fleet scan</div></div>
+    <div class="hs" style="--hsc:var(--lime)"><div class="hs-n">24h</div><div class="hs-l">Detection window</div></div>
+    <div class="hs" style="--hsc:var(--magenta)"><div class="hs-n">2</div><div class="hs-l">Active signals</div></div>
+    <div class="hs" style="--hsc:var(--orange)"><div class="hs-n">0</div><div class="hs-l">Manual checks needed</div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════
+     PROBLEM PAGE
+═══════════════════════════════ -->
+<div id="page-problem" class="page">
+  <div class="wrap">
+    <div class="pg-header">
+      <div class="pg-tag red rev">The Problem</div>
+      <h1 class="pg-h1 rev d1">Publishers self-serve.<br/>Problems stay invisible.</h1>
+      <p class="pg-lead rev d2">Most publishers integrate the SDK or API themselves — and in doing so, regularly miss GAID, User Agent, and IP collection. Nobody alerts them. The impact compounds silently across campaigns.</p>
+    </div>
+
+    <div class="prob-cards">
+      <div class="prob-card rev d1" style="--pc:var(--red)">
+        <div class="pc-n">01</div>
+        <span class="pc-ico">🔧</span>
+        <div class="pc-t">Self-serve integration gaps</div>
+        <div class="pc-b">Publishers integrate the SDK on their own. GAID consent flags, User Agent strings, and IP collection are frequently misconfigured or skipped — with no immediate feedback that anything is wrong.</div>
+      </div>
+      <div class="prob-card rev d2" style="--pc:var(--orange)">
+        <div class="pc-n">02</div>
+        <span class="pc-ico">🎯</span>
+        <div class="pc-t">Campaigns reach wrong users</div>
+        <div class="pc-b">Without GAID, advertisers cannot target the right users. Campaign spend goes toward the wrong audiences — delivering lower CPI performance and fewer quality installs. Advertiser confidence erodes.</div>
+      </div>
+      <div class="prob-card rev d3" style="--pc:var(--magenta)">
+        <div class="pc-n">03</div>
+        <span class="pc-ico">📉</span>
+        <div class="pc-t">Potential users never reached</div>
+        <div class="pc-b">When the right users are never reached, potential revenue is never unlocked. Every day a broken integration persists means another day of missed opportunity the network cannot recover.</div>
+      </div>
+    </div>
+
+    <div class="impact-flow rev d2">
+      <div class="if-title">The silent chain reaction</div>
+      <div class="if-chain">
+        <div class="ifc-item">GAID missing</div>
+        <div class="ifc-arrow">→</div>
+        <div class="ifc-item">No user targeting</div>
+        <div class="ifc-arrow">→</div>
+        <div class="ifc-item">Wrong audience</div>
+        <div class="ifc-arrow">→</div>
+        <div class="ifc-item">Lower CPI</div>
+        <div class="ifc-arrow">→</div>
+        <div class="ifc-item">Potential users lost</div>
+        <div class="ifc-arrow">→</div>
+        <div class="ifc-item end">Revenue opportunity gone</div>
+      </div>
+    </div>
+
+    <div class="timeline-section rev d3">
+      <div class="tl-title">The detection gap — without PULSE</div>
+      <div class="tl-track">
+        <div class="tl-item">
+          <div class="tl-dot" style="--tld:var(--muted)"></div>
+          <div class="tl-day">Day 0</div>
+          <div class="tl-lbl">Publisher deploys SDK update</div>
+          <div class="tl-sub">GAID silently stops collecting</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="--tld:var(--orange)"></div>
+          <div class="tl-day">Day 1</div>
+          <div class="tl-lbl">Campaigns run on broken data</div>
+          <div class="tl-sub">Wrong users targeted, potential wasted</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="--tld:var(--orange)"></div>
+          <div class="tl-day">Day 2</div>
+          <div class="tl-lbl">Revenue opportunity leaks silently</div>
+          <div class="tl-sub">Nobody in the team alerted</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot" style="--tld:var(--red)"></div>
+          <div class="tl-day">Day 3+</div>
+          <div class="tl-lbl">Advertiser complaint or dispute</div>
+          <div class="tl-sub">Manual investigation starts — too late</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════
+     SOLUTION PAGE
+═══════════════════════════════ -->
+<div id="page-solution" class="page">
+  <div class="wrap">
+    <div class="pg-header">
+      <div class="pg-tag electric rev">The Solution</div>
+      <h1 class="pg-h1 rev d1">PULSE scans every publisher.<br/>60 seconds. Every day.</h1>
+      <p class="pg-lead rev d2">One agent. Read-only Redshift access. Two parallel SQL queries. Full fleet diagnosis. Placement Health Bot posts a prioritised Slack report automatically.</p>
+    </div>
+
+    <!-- pipeline -->
+    <div class="pipeline rev d1">
+      <div class="pl-header">PULSE pipeline — full execution flow</div>
+      <div class="pl-body">
+        <div class="pl-steps">
+          <div class="pl-step">
+            <div class="pl-step-num" style="--psc:var(--lime);background:rgba(168,255,62,.08);box-shadow:0 0 20px rgba(168,255,62,.15)">🚀</div>
+            <div class="pl-step-title">Start</div>
+            <div class="pl-step-sub">Daily trigger 04:00 UTC via scheduler</div>
+          </div>
+          <div class="pl-step">
+            <div class="pl-step-num" style="--psc:var(--electric);background:rgba(0,245,255,.08)">🗄️</div>
+            <div class="pl-step-title">Connect</div>
+            <div class="pl-step-sub">SSL to Redshift using .env credentials</div>
+          </div>
+          <div class="pl-step">
+            <div class="pl-step-num" style="--psc:var(--orange);background:rgba(255,123,0,.08)">⚡</div>
+            <div class="pl-step-title">Query</div>
+            <div class="pl-step-sub">2 SQL queries run in parallel</div>
+          </div>
+          <div class="pl-step">
+            <div class="pl-step-num" style="--psc:var(--orange);background:rgba(255,123,0,.08)">⚙️</div>
+            <div class="pl-step-title">Score</div>
+            <div class="pl-step-sub">Scoring engine + CSV export</div>
+          </div>
+          <div class="pl-step">
+            <div class="pl-step-num" style="--psc:var(--violet);background:rgba(139,92,246,.08)">🧠</div>
+            <div class="pl-step-title">Analyse</div>
+            <div class="pl-step-sub">Claude Sonnet AI — conditional call</div>
+          </div>
+          <div class="pl-step">
+            <div class="pl-step-num" style="--psc:var(--magenta);background:rgba(255,45,155,.08)">📨</div>
+            <div class="pl-step-title">Report</div>
+            <div class="pl-step-sub">POST to #placement-health-alert</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- queries -->
+    <div class="query-split rev d2">
+      <div class="qs-card">
+        <div class="qsc-badge" style="color:var(--electric)">Query 1 — GAID / UA</div>
+        <div class="qsc-title">Missing rate per publisher</div>
+        <div class="qsc-desc">Reads impressions_fh for the last 24 hours. Returns publisher_id + GAID missing % + UA missing %. Filtered to publishers above 5% threshold.</div>
+        <div class="qsc-meta">Source: impressions_fh · Group by: publisher_id · Filter: &gt;5%</div>
+      </div>
+      <div class="qs-card">
+        <div class="qsc-badge" style="color:var(--lime)">Query 2 — Imp / Request Ratio</div>
+        <div class="qsc-title">Overall fill rate per publisher</div>
+        <div class="qsc-desc">Joins impressions_fh + transactions_fh. Returns total requests + impressions + ratio per publisher. Aggregated overall — no zone split.</div>
+        <div class="qsc-meta">Source: impressions_fh + transactions_fh · Group by: publisher_id · Filter: &lt;20% or &gt;95%</div>
+      </div>
+    </div>
+
+    <!-- signals -->
+    <div class="sig-grid rev d2">
+      <div class="sig sig-1">
+        <div class="sig-phase" style="color:var(--electric)">Signal 01 · Live</div>
+        <div class="sig-name">GAID / User Agent Missing Rate</div>
+        <div class="sig-desc">% of impressions where GAID or User Agent is null or empty. Core publisher signal.</div>
+        <div class="sig-thr">
+          <span class="thr tr">Critical &gt;50%</span>
+          <span class="thr to">Warning 20–50%</span>
+          <span class="thr tg">Healthy &lt;5%</span>
+        </div>
+      </div>
+      <div class="sig sig-2">
+        <div class="sig-phase" style="color:var(--lime)">Signal 02 · Live</div>
+        <div class="sig-name">Impression / Request Ratio</div>
+        <div class="sig-desc">Impressions served ÷ ad requests received. Detects flooding and impression replay.</div>
+        <div class="sig-thr">
+          <span class="thr tr">Critical &lt;10%</span>
+          <span class="thr to">Warning 10–20%</span>
+          <span class="thr tg">Healthy 20–95%</span>
+        </div>
+      </div>
+      <div class="sig sig-3">
+        <div class="sig-phase" style="color:var(--violet)">Signal 03 · Phase 2</div>
+        <div class="sig-name">CTR Normality</div>
+        <div class="sig-desc">CTR vs 14-day per-publisher baseline. Detects click injection and bot traffic.</div>
+        <div class="sig-thr"><span class="thr to">Phase 2</span></div>
+      </div>
+      <div class="sig sig-4">
+        <div class="sig-phase" style="color:var(--orange)">Signal 04 · Phase 2</div>
+        <div class="sig-name">IP Diversity Score</div>
+        <div class="sig-desc">Unique IPs per 1K impressions. Publishers miss IP collection too — catches emulator farms.</div>
+        <div class="sig-thr"><span class="thr to">Phase 2</span></div>
+      </div>
+    </div>
+
+    <!-- slack output -->
+    <div class="sol-output">
+      <div class="revl d1">
+        <div class="slack-mock">
+          <div class="smt">
+            <div class="smt-dots">
+              <div class="smt-d" style="background:#ff5f57"></div>
+              <div class="smt-d" style="background:#ffbd2e"></div>
+              <div class="smt-d" style="background:#28c840"></div>
+            </div>
+            <div class="smt-ch"><span style="color:#4a4a6a;font-size:14px">#</span>placement-health-alert</div>
+          </div>
+          <div class="smb">
+            <div class="sm-msg">
+              <div class="sm-av">PHB</div>
+              <div class="sm-mc">
+                <span class="sm-sender">Placement Health Bot<span class="sm-badge">App</span></span>
+                <span class="sm-time">04:02</span>
+                <div class="sm-txt"><strong>Publisher Integration Health Check</strong></div>
+                <div class="sm-att att-b" style="margin-top:6px">
+                  <div class="sm-att-t">24h scan · Full publisher fleet · 60s</div>
+                  <div class="sm-stats">
+                    <div class="sm-stat"><div class="sm-stat-l">Critical</div><div class="sm-stat-v svr">3</div></div>
+                    <div class="sm-stat"><div class="sm-stat-l">Warning</div><div class="sm-stat-v sva">7</div></div>
+                    <div class="sm-stat"><div class="sm-stat-l">Healthy</div><div class="sm-stat-v svg">37</div></div>
+                  </div>
+                </div>
+                <div class="sm-att att-r" style="margin-top:5px">
+                  <div class="sm-att-t">🔴 Critical · Pub #4821 · MobileGames</div>
+                  <div class="sm-att-b">GAID: <strong style="color:#e01e5a">31%</strong> ↓ from 94% · Android · 3 days<br/><em>SDK update reset GAID consent flag</em></div>
+                  <div class="sm-btns">
+                    <button class="sm-btn" onclick="this.textContent='Copied!'">Copy AM msg</button>
+                    <button class="sm-btn" onclick="this.textContent='✓';this.style.color='#2bac76'">Acknowledge</button>
+                  </div>
+                </div>
+                <div class="sm-att att-g" style="margin-top:5px">
+                  <div class="sm-att-t">37 healthy · 2 recovered today</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="revr d2">
+        <div class="pg-tag electric" style="margin-bottom:8px">Output</div>
+        <h3 style="font-family:var(--ff-d);font-size:28px;letter-spacing:.04em;color:#fff;line-height:1.15;margin-bottom:14px">Placement Health Bot.<br/>#placement-health-alert.</h3>
+        <p style="font-size:14px;color:var(--muted);line-height:1.7;margin-bottom:0">Posted daily at 04:02 UTC. Every publisher checked. Every anomaly flagged. Fix message pre-written.</p>
+        <div class="out-feats">
+          <div class="of"><div class="of-dot" style="--odc:var(--electric)"></div><div class="of-t"><strong>Severity digest</strong> — Critical first, Warning list, fleet averages</div></div>
+          <div class="of"><div class="of-dot" style="--odc:var(--lime)"></div><div class="of-t"><strong>AI diagnosis</strong> — cause, platform scope, onset, days broken</div></div>
+          <div class="of"><div class="of-dot" style="--odc:var(--magenta)"></div><div class="of-t"><strong>Ready-to-send AM message</strong> — editable, never auto-sent</div></div>
+          <div class="of"><div class="of-dot" style="--odc:var(--orange)"></div><div class="of-t"><strong>Recovery notifications</strong> — green card when publisher fixes</div></div>
+          <div class="of"><div class="of-dot" style="--odc:var(--gold)"></div><div class="of-t"><strong>CSV export</strong> — full run results saved to /reports/ every time</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════
+     AGENT PAGE
+═══════════════════════════════ -->
+<div id="page-agent" class="page">
+  <div class="wrap">
+    <div class="pg-header">
+      <div class="pg-tag violet rev">Agent Role</div>
+      <h1 class="pg-h1 rev d1">Not a script.<br/>An agent that reasons.</h1>
+      <p class="pg-lead rev d2">A script detects and alerts. PULSE autonomously decides which follow-up questions matter, runs them against Redshift, synthesises findings through Claude AI, and writes the fix — all without human instruction.</p>
+    </div>
+
+    <div class="why-agent rev d1">
+      <div class="wa-title">What makes it an agent</div>
+      <div class="wa-body">The 6-step pipeline is agentic because <strong>steps 3–5 are not predetermined.</strong> In step 3, PULSE decides which follow-up queries to run based on what step 1 returns. In step 4, Claude AI reads the diagnostic data and <strong>reasons about causation</strong> — not just pattern-matching. In step 5, it generates a human-ready fix message tailored to the specific publisher and issue. No human wrote that logic for each publisher. The agent did.</div>
+    </div>
+
+    <div class="agent-cards">
+      <div class="ag rev d1" style="--agc:var(--electric)">
+        <div class="ag-step">Step 01 — Detect</div>
+        <span class="ag-ico">🔍</span>
+        <div class="ag-t">Autonomous detection</div>
+        <div class="ag-d">Queries impressions_fh and transactions_fh using your SQL. Reads every publisher and decides which ones need attention — no human involvement.</div>
+        <div class="ag-det">
+          <div class="ag-det-i">Reads impressions_fh for GAID/UA rates</div>
+          <div class="ag-det-i">Joins transactions_fh for request data</div>
+          <div class="ag-det-i">Both queries run in parallel for speed</div>
+        </div>
+      </div>
+      <div class="ag rev d2" style="--agc:var(--orange)">
+        <div class="ag-step">Steps 02–03 — Score + Diagnose</div>
+        <span class="ag-ico">⚙️</span>
+        <div class="ag-t">Autonomous triage</div>
+        <div class="ag-d">Scores severity, promotes compound risk, then runs 3 diagnostic queries per flagged publisher — answering: is this new? sudden or gradual? Android or iOS?</div>
+        <div class="ag-det">
+          <div class="ag-det-i">7-day daily GAID trend query</div>
+          <div class="ag-det-i">Hourly buckets for onset detection</div>
+          <div class="ag-det-i">Platform split — Android vs iOS</div>
+        </div>
+      </div>
+      <div class="ag rev d3" style="--agc:var(--violet)">
+        <div class="ag-step">Step 04 — Reason</div>
+        <span class="ag-ico">🧠</span>
+        <div class="ag-t">Claude AI synthesis</div>
+        <div class="ag-d">All diagnostic data passed to Claude Sonnet in a single structured call. Claude identifies patterns, writes plain-English diagnosis, and classifies the likely root cause.</div>
+        <div class="ag-det">
+          <div class="ag-det-i">Fleet summary + per-publisher insights</div>
+          <div class="ag-det-i">Cause: sdk_update / consent_flag / integration_error</div>
+          <div class="ag-det-i">Platform scope + onset description</div>
+        </div>
+      </div>
+      <div class="ag rev d1" style="--agc:var(--lime)">
+        <div class="ag-step">Step 05 — Act</div>
+        <span class="ag-ico">⚡</span>
+        <div class="ag-t">Actionable output</div>
+        <div class="ag-d">PULSE produces a specific SDK fix recommendation and a human-ready message the account manager can forward to the publisher in one click.</div>
+        <div class="ag-det">
+          <div class="ag-det-i">Specific SDK version checks</div>
+          <div class="ag-det-i">Consent flag verification steps</div>
+          <div class="ag-det-i">Test impression validation guide</div>
+        </div>
+      </div>
+      <div class="ag rev d2" style="--agc:var(--magenta)">
+        <div class="ag-step">Step 06 — Report</div>
+        <span class="ag-ico">📨</span>
+        <div class="ag-t">Slack-native delivery</div>
+        <div class="ag-d">Placement Health Bot posts a full structured Slack Blocks digest. Critical publishers get full detail cards with AI insight, actions, and AM message buttons.</div>
+        <div class="ag-det">
+          <div class="ag-det-i">Max 5 critical cards with full detail</div>
+          <div class="ag-det-i">AI fleet summary block included</div>
+          <div class="ag-det-i">Header, stats grid, warning list, footer</div>
+        </div>
+      </div>
+      <div class="ag rev d3" style="--agc:var(--gold)">
+        <div class="ag-step">Always — Export</div>
+        <span class="ag-ico">💾</span>
+        <div class="ag-t">Persistent record</div>
+        <div class="ag-d">Every run exports a full CSV to /reports/ regardless of dry-run mode. No new Redshift tables needed — your historical record, human-readable and shareable.</div>
+        <div class="ag-det">
+          <div class="ag-det-i">Full publisher list with severity scores</div>
+          <div class="ag-det-i">Timestamped per run</div>
+          <div class="ag-det-i">Basis for future trend analysis</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="diff-lbl rev d2">Before and after PULSE</div>
+    <div class="diff-grid rev d3">
+      <div class="diff-col">
+        <div class="diff-title dt-before">Before PULSE</div>
+        <div class="diff-item"><span class="di-x">✗</span><span>Manual dashboard checks — 2–3 hrs daily</span></div>
+        <div class="diff-item"><span class="di-x">✗</span><span>Issues caught 48–72 hours after they start</span></div>
+        <div class="diff-item"><span class="di-x">✗</span><span>No root cause — just a number out of range</span></div>
+        <div class="diff-item"><span class="di-x">✗</span><span>AM writes the publisher message from scratch</span></div>
+        <div class="diff-item"><span class="di-x">✗</span><span>Recovery untracked — nobody knows when fixed</span></div>
+        <div class="diff-item"><span class="di-x">✗</span><span>Broken integrations silently losing potential users</span></div>
+      </div>
+      <div class="diff-vs">VS</div>
+      <div class="diff-col after">
+        <div class="diff-title dt-after">With PULSE</div>
+        <div class="diff-item"><span class="di-c">✓</span><span>Zero manual checks — agent runs at 04:00 UTC</span></div>
+        <div class="diff-item"><span class="di-c">✓</span><span>Detected within 24 hours — every publisher</span></div>
+        <div class="diff-item"><span class="di-c">✓</span><span>AI diagnosis: cause, platform, onset, trend</span></div>
+        <div class="diff-item"><span class="di-c">✓</span><span>AM message pre-written and ready to forward</span></div>
+        <div class="diff-item"><span class="di-c">✓</span><span>Recovery notification auto-posted when fixed</span></div>
+        <div class="diff-item"><span class="di-c">✓</span><span>Faster fixes = more potential users reached</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════
+     ROADMAP PAGE
+═══════════════════════════════ -->
+<div id="page-roadmap" class="page">
+  <div class="wrap">
+    <div class="pg-header">
+      <div class="pg-tag gold rev">Roadmap</div>
+      <h1 class="pg-h1 rev d1">Live today.<br/>More powerful in weeks.</h1>
+      <p class="pg-lead rev d2">Phase 1 is running. PULSE scans the full publisher fleet in 60 seconds on existing infrastructure. Every phase adds intelligence on top of the same foundation.</p>
+    </div>
+
+    <div class="phase-grid">
+      <div class="phase ph1 rev d1">
+        <div class="ph-status st-live">✦ Live Now</div>
+        <div class="ph-label" style="color:var(--electric)">Phase 1</div>
+        <div class="ph-title">Detection Foundation</div>
+        <div class="ph-desc">Two deterministic signals. Read-only Redshift. Claude AI diagnosis. Placement Health Bot posts to #placement-health-alert daily.</div>
+        <div class="ph-feats">
+          <div class="phf phf-1">GAID + UA missing rate</div>
+          <div class="phf phf-1">Imp/Req ratio per publisher</div>
+          <div class="phf phf-1">Claude AI root cause analysis</div>
+          <div class="phf phf-1">Slack digest via Placement Health Bot</div>
+          <div class="phf phf-1">CSV export every run</div>
+          <div class="phf phf-1">--dry-run mode for testing</div>
+        </div>
+        <div class="ph-eta">Run time: ~60s · Full fleet · Read-only</div>
+      </div>
+      <div class="phase ph2 rev d2">
+        <div class="ph-status st-soon">→ 3–4 weeks</div>
+        <div class="ph-label" style="color:var(--violet)">Phase 2</div>
+        <div class="ph-title">Expanded Signals</div>
+        <div class="ph-desc">Add CTR normality and IP diversity — the two signals publishers most frequently miss in self-serve integrations. Statistical baselines replace static thresholds.</div>
+        <div class="ph-feats">
+          <div class="phf phf-2">CTR normality (14-day baseline)</div>
+          <div class="phf phf-2">IP diversity per publisher</div>
+          <div class="phf phf-2">Statistical baselines (mean ± 3σ)</div>
+          <div class="phf phf-2">Compound risk scoring</div>
+          <div class="phf phf-2">Country-level CGNAT correction</div>
+          <div class="phf phf-2">Recovery auto-detection</div>
+        </div>
+        <div class="ph-eta">Requires 2–3 weeks Phase 1 data for baselines</div>
+      </div>
+      <div class="phase ph3 rev d3">
+        <div class="ph-status st-future">◆ 6–8 weeks</div>
+        <div class="ph-label" style="color:var(--gold)">Phase 3</div>
+        <div class="ph-title">Real-Time + Health Score</div>
+        <div class="ph-desc">Cut detection from 24h to 1–2h for Critical signals. Weekly publisher health score 0–100. Slack query interface so the team can ask PULSE questions in the channel.</div>
+        <div class="ph-feats">
+          <div class="phf phf-3">1–2h fast lane for Critical signals</div>
+          <div class="phf phf-3">Weekly health score 0–100</div>
+          <div class="phf phf-3">Trend sparklines per publisher</div>
+          <div class="phf phf-3">@PULSE query in Slack channel</div>
+          <div class="phf phf-3">AM-level weekly digest</div>
+          <div class="phf phf-3">S3 memory layer for history</div>
+        </div>
+        <div class="ph-eta">Builds on Phase 1 + 2 data history</div>
+      </div>
+    </div>
+
+    <div class="rt-card rev d2">
+      <div class="rt-left">
+        <h3>From 24h detection to real-time</h3>
+        <p>Phase 3 introduces a two-tier model — a fast lane checking Critical signals every 30 minutes, and the existing daily lane for full coverage. Same SQL, shorter window. No new infrastructure.</p>
+      </div>
+      <div class="rt-nums">
+        <div class="rtn"><div class="rtn-v">24h</div><div class="rtn-l">Today</div></div>
+        <div class="rt-arrow">→</div>
+        <div class="rtn"><div class="rtn-v" style="color:var(--lime)">2h</div><div class="rtn-l">Phase 3</div></div>
+      </div>
+    </div>
+
+    <div class="hs-card rev d3">
+      <div class="hs-title">Weekly Publisher Health Score</div>
+      <div class="hs-sub">Every publisher scored 0–100. Posted every Monday. Most-improved and most-degraded highlighted per account manager.</div>
+      <div class="formula">
+        <div class="f-title">Score formula — Phase 3</div>
+        <div class="f-row"><span class="f-sig">GAID fill rate</span><span class="f-wt">× 0.40</span></div>
+        <div class="f-row"><span class="f-sig">UA fill rate</span><span class="f-wt">× 0.20</span></div>
+        <div class="f-row"><span class="f-sig">Imp/Req ratio score</span><span class="f-wt">× 0.25</span></div>
+        <div class="f-row"><span class="f-sig">CTR normality</span><span class="f-wt">× 0.10</span></div>
+        <div class="f-row"><span class="f-sig">IP diversity</span><span class="f-wt">× 0.05</span></div>
+      </div>
+      <div class="bands" style="margin-bottom:24px">
+        <div class="band b-g"><div class="band-r">85–100</div><div class="band-l">Healthy</div></div>
+        <div class="band b-l"><div class="band-r">65–84</div><div class="band-l">Needs Attention</div></div>
+        <div class="band b-o"><div class="band-r">40–64</div><div class="band-l">At Risk</div></div>
+        <div class="band b-r"><div class="band-r">0–39</div><div class="band-l">Critical</div></div>
+      </div>
+
+      <div class="slack-query-banner">
+        <div class="sqb-left">
+          <h4>@PULSE query interface (Phase 3)</h4>
+          <p>Type in #placement-health-alert to ask PULSE questions about publisher history. No new tables — agent reads its own CSV exports stored in S3.</p>
+        </div>
+        <div class="sqb-right">
+          <div class="sqb-input">@PULSE last 7 days pub 4821</div>
+          <div class="sqb-response" style="color:var(--teal)">Pub #4821 · last 7 days<br/>Mon: GAID 94% ✓<br/>Wed: GAID 31% ⚠ onset<br/>Today: GAID 31% 🔴 day 3</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span class="fl">PULSE</span> — Publisher Up-time & Live Signal Engine ·
+    <span class="fl2">Placement Health Bot</span> · #placement-health-alert
+  </div>
+</footer>
+
+<!-- ═══════════════════════════════
+     JS
+═══════════════════════════════ -->
+<script>
+/* particle canvas */
+(function(){
+  const c=document.getElementById('bgc'),ctx=c.getContext('2d');
+  let W,H;
+  function resize(){W=c.width=window.innerWidth;H=c.height=window.innerHeight}
+  resize();window.addEventListener('resize',resize);
+  const pts=[];
+  for(let i=0;i<55;i++){
+    pts.push({x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,
+      vx:(Math.random()-.5)*.22,vy:(Math.random()-.5)*.18,r:Math.random()*1.8+.5,
+      hue:Math.random()>.6?155:270,a:Math.random()*.25+.08});
+  }
+  let mx=W/2,my=H/2;
+  document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY});
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    const g=ctx.createRadialGradient(mx,my,0,mx,my,220);
+    g.addColorStop(0,'rgba(0,245,255,0.035)');g.addColorStop(1,'transparent');
+    ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+    pts.forEach(p=>{
+      p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0)p.x=W;if(p.x>W)p.x=0;if(p.y<0)p.y=H;if(p.y>H)p.y=0;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle=`hsla(${p.hue},100%,65%,${p.a})`;ctx.fill();
+    });
+    for(let i=0;i<pts.length;i++){
+      for(let j=i+1;j<pts.length;j++){
+        const dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);
+        if(d<90){
+          ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);
+          ctx.strokeStyle=`rgba(0,245,255,${.05*(1-d/90)})`;ctx.lineWidth=.5;ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* cursor */
+(function(){
+  const d=document.getElementById('cur-d'),r=document.getElementById('cur-r');
+  let rx=0,ry=0,tx=0,ty=0;
+  document.addEventListener('mousemove',e=>{tx=e.clientX;ty=e.clientY;d.style.left=tx+'px';d.style.top=ty+'px'});
+  function lerp(a,b,t){return a+(b-a)*t}
+  function loop(){rx=lerp(rx,tx,.1);ry=lerp(ry,ty,.1);r.style.left=rx+'px';r.style.top=ry+'px';requestAnimationFrame(loop)}
+  loop();
+})();
+
+/* nav scroll */
+window.addEventListener('scroll',()=>document.getElementById('nav').classList.toggle('scrolled',window.scrollY>30));
+
+/* TAB SWITCHING */
+function showTab(tab){
+  /* hide all */
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tn-btn').forEach(b=>b.classList.remove('active'));
+
+  /* show target */
+  const el=document.getElementById('page-'+tab);
+  if(el){
+    el.classList.add('active');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  /* activate button */
+  const btn=document.querySelector(`.tn-btn[data-tab="${tab}"]`);
+  if(btn)btn.classList.add('active');
+
+  /* trigger reveals */
+  setTimeout(()=>triggerReveals(),100);
+}
+
+/* reveal on scroll + on tab switch */
+function triggerReveals(){
+  const els=document.querySelectorAll('.active .rev,.active .revl,.active .revr');
+  const ob=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{if(e.isIntersecting)e.target.classList.add('vis')});
+  },{threshold:.08});
+  els.forEach(el=>{el.classList.remove('vis');ob.observe(el)});
+}
+triggerReveals();
+
+/* home card click already handled by onclick — also trigger tab switch from logo */
+document.querySelectorAll('.hc').forEach(card=>{
+  card.addEventListener('click',()=>{
+    const tab=card.querySelector('.hc-label').textContent.toLowerCase().replace(/\s+/g,'');
+    const map={theproblem:'problem',thesolution:'solution',agentrole:'agent',roadmap:'roadmap'};
+    if(map[tab])showTab(map[tab]);
+  });
+});
+
+/* keyboard nav */
+document.addEventListener('keydown',e=>{
+  const tabs=['home','problem','solution','agent','roadmap'];
+  const map={'1':'problem','2':'solution','3':'agent','4':'roadmap','0':'home'};
+  if(map[e.key])showTab(map[e.key]);
+});
+</script>
+
+</body>
+</html>
